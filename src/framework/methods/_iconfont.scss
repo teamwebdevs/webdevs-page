@@ -1,0 +1,74 @@
+// ===================================================
+// Iconfont Helper
+// ===================================================
+
+// Get the Icon from the Map
+//
+// @param  {string} $name - Icon Keyword
+//
+// @returns {*}
+@function icon($name) {
+  @if map-has-key($kittn-font-icons,$name) {
+    @return map-get($kittn-font-icons,$name);
+  } @else {
+    @warn 'The Icon "#{$name}" is not available! Possible Icons: #{map-keys($kittn-font-icons)}';
+  }
+}
+
+
+// Build the Base Attributes for all Font Icons
+//
+// @access private
+//
+// @param  {string} $iconFontName - Iconfont Name
+@mixin iconfont($iconFontName) {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  display: inline-block;
+  font-family: $iconFontName;
+  font-style: normal;
+  font-weight: normal !important;
+  speak: none;
+  text-decoration: inherit;
+  line-height: 1;
+}
+
+// Build the Base Icon Font Behavior
+//
+// @param  {string} $iconFontName - Iconfont Name
+@mixin icon-font-base($iconFontName) {
+  [class^="#{map-get($kittn-iconfont, prefix)}#{map-get($kittn-bem, modifier)}"],
+  [class*=" #{map-get($kittn-iconfont, prefix)}#{map-get($kittn-bem, modifier)}"],
+  [data-icon],
+  %iconfont {
+    &:before {
+      @include iconfont($iconFontName);
+    }
+  }
+  [data-icon]:before {
+    content: attr(data-icon); }
+}
+
+// Insert the Icon Value as Content
+//
+// @param  {*}  $name    - Key to the Map Entry
+// @param  {*}  $connect - Can be connected with the %iconfontcontainer, or a Iconfont (mixin), or false ['container']
+@mixin icon($name, $connect: 'container') {
+  @if $connect != false {
+    @if $connect == 'container' {
+      @extend %iconfont;
+    } @else {
+      @include iconfont(map-get($o, font));
+    }
+  }
+
+  content: icon($name);
+}
+
+
+// Extend a Class with a Icon Font Class
+//
+// @param  {string} $name - Name off the Icon (from the Map)
+@mixin ext-icon($name) {
+  @extend .#{map-get($kittn-iconfont, prefix)}#{map-get($kittn-bem, modifier)}#{$name};
+}

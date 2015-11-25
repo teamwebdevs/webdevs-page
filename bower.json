@@ -1,0 +1,8 @@
+{
+  "name": "webdevs-page",
+  "version": "0.0.2",
+  "dependencies": {
+    "jquery": "1.11.3",
+    "conditionizr": "4.4.0"
+  }
+}

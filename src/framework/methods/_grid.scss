@@ -1,0 +1,991 @@
+// ===================================================
+// Grid
+// ===================================================
+
+// Default Vars
+$bem-modifier: map-get($kittn-bem, modifier);
+$mobile-first: map-get($kittn-activate, mobile-first);
+
+// Calculate the width from a column in percent
+//
+// @param  {number} $columns     - Columns
+// @param  {number} $maxcolumns  - Max Columns [12]
+//
+// @returns {Number}            - Percentage Value
+@function span($columns, $maxcolumns: 12) {
+  // Clean up
+  $columns: strip-units($columns);
+  $maxcolumns: strip-units($maxcolumns);
+
+  // Clamp the Number
+  $columns: clamp($columns, 0, $maxcolumns);
+
+  @return percentage($columns / $maxcolumns);
+}
+
+// Build a formula so CSS can Calculate the relative Width.
+// Is also useful to include margins, the cssCalc can compensate this.
+//
+// @param {number} $columns - Number of Columns
+// @param {number} $gutter - Margin Width for 2 Sides [0]
+@function span-calc($columns, $gutter: 0) {
+  $columns: strip-units($columns);
+
+  @if unitless($gutter) {
+    $gutter: $gutter + 0px;
+  }
+
+  @return calc((100% / #{$columns}) - #{if($gutter != 0, (#{$gutter * 2}), '')});
+}
+
+// Setup the Grid Size in Steps based on the Breakpoints
+//
+// @param {map}    $map - Connection to the Breakpoint Map
+@mixin adaptive($map: $kittn-breakpoint-map) {
+
+  // Add a empty List
+  $list: ();
+
+  // Move Values in a list
+  @each $name, $entry in $map {
+    @if map-get($entry, step) {
+      $list: append($list, map-get($entry,size), comma);
+    }
+  }
+
+  // Clean up Duplicates
+  $list: sl-remove-duplicates($list);
+
+  // Sort the List
+  @if $mobile-first != true { $list: sl-reverse($list); }
+
+  // Set the Start Width
+  width: nth($list,1);
+
+  // Build the Stepped Width
+  @for $i from 2 through length($list) {
+    @media screen and (if($mobile-first, min-width, max-width): if($mobile-first, (nth($list,$i)), nth($list,$i) - 1)) {
+      width: if($mobile-first, (nth($list,$i)), nth($list,$i) - 1);
+    }
+  }
+}
+
+// Generate the Page Container, Size and Float Direction
+//
+// @param  {list}   $width       - Container Size. The Max and Min Width of the container. One Value only the Container is static [320 1180]
+// @param  {number} $spacing     - Side Padding of the Container [10]
+// @param  {Map}    $o           - Setup Args
+//         {string} $o.position  - Container position ([center], left, right)
+//         {number} $o.gutter    - Side Spacing - only relevant on Container Position left or right [0]
+//         {bool}   $o.static-ie - When is set on 'true' IE8 get a static Container [false]
+@mixin container($width: 320 1180, $spacing: 10, $o: ()) {
+
+  // Mixin Default Vars
+  $o: map-merge((
+    position: center,
+    gutter: 0,
+    static-ie: false
+  ),$o);
+
+  // Variable Routing
+  $position  : map-get($o, position);
+  $gutter    : map-get($o, gutter);
+  $static-ie : map-get($o, static-ie);
+  $width-val-1: null;
+  $width-val-2: null;
+
+  // Map with the possible Arguments
+  $check: (
+    position: (center, left, right)
+  );
+
+  // Check the Possible Arguments, on fail put a warning in the Console
+  @include warn-args($check, position, map-get($o, position), 'container');
+
+  // Position for the Container
+  @if $position == left {
+    // left positioned
+    @if $gutter > 0 { margin-left: unit-check($gutter); }
+
+  } @else if $position == right {
+    // right positioned
+    float: right;
+
+    // Add Margin when over Zero Size
+    @if $gutter > 0 { margin-right: unit-check($gutter); }
+
+  } @else {
+    // centered
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  // When width == false write no width values
+  @if $width != false {
+
+    // Include the Size of the Container
+    @if length($width) > 2 {
+      @warn 'To many Values for "width". Reduce to max two Values.';
+
+    } @else if length($width) == 2 {
+      $width-val-1: unit-check(nth($width,1));
+      $width-val-2: unit-check(nth($width,2));
+
+      // Check the Values
+      @if $width-val-1 == $width-val-2 {
+        width: $width-val-1 + 0px;
+
+      } @else {
+        width: 100%;
+
+        // Sort the Values
+        min-width: if($width-val-1 < $width-val-2, $width-val-1, $width-val-2);
+        max-width: if($width-val-1 < $width-val-2, $width-val-2, $width-val-1);
+      }
+
+    } @else {
+      // With only one width Value, the outer container is static for all Browsers
+      width: unit-check($width);
+    }
+  }
+
+  // Make the Container non-fluid for IE when activated
+  @if $static-ie != false {
+    .ie8 & {
+      // When the Base the base width are two values, overwrite this with ie8
+      @if length($width) > 1 {
+        width: 100%;
+
+        @if $static-ie > 0 {
+          min-width: unit-check($static-ie);
+          max-width: unit-check($static-ie);
+
+        } @else {
+          // When the Size is to low (zero), Sass use the biggest width for establish the Static width
+          min-width: if($width-val-1 < $width-val-2, $width-val-2, $width-val-1);
+          max-width: if($width-val-1 < $width-val-2, $width-val-2, $width-val-1);
+        }
+
+      } @else {
+        width: unit-check($static-ie);
+      }
+    }
+  }
+
+  // Include Padding of the Container
+  @if $spacing > 0 {
+    padding-left: unit-check($spacing);
+    padding-right: unit-check($spacing);
+  }
+}
+
+// Build the outer Container that hold the Grid-Columns
+//
+// @param  {number} $spacing   - To reset the margin off a nested rows. Size from the Gutter. [10]
+// @param  {string} $layout    - The type from the Layout ([block], inline, table, fixedtable, flex)
+// @param  {Map}    $o         - Setup Args
+//         {string} $o.valign  - Vertical align. ([top], bottom, baseline, middle, stretch, baseline)
+//         {string} $o.align   - Horizontal align. ([left], justify, center, right, left, spacebetween, spacearound)
+//         {number} $o.overlap - Let the Row overlap the parent Container [false]
+@mixin row($spacing: 10, $layout: 'block', $o: ()) {
+
+  // Mixin Default Vars
+  $o: map-merge((
+    valign: top,
+    align: left,
+    overlap: false
+  ),$o);
+
+  // Variable Routing
+  $valign : map-get($o,valign);
+  $align  : map-get($o,align);
+  $overlap: map-get($o,overlap);
+
+  // Map with the possible Arguments
+  $check: (
+    layout: (block, inline, table, fixedtable, flex),
+    align: (left, justify, center, right, left, spacebetween, spacearound),
+    valign: (top, bottom, baseline, middle, stretch, baseline)
+  );
+
+  // Check the Possible Arguments, on fail put a warning in the Console
+  @include warn-args($check, layout, map-get($o, layout), 'row');
+  @include warn-args($check, valign, map-get($o, valign), 'row');
+  @include warn-args($check, align, map-get($o, align), 'row');
+
+  // Setup the Layout
+  @if $layout == inline {
+    vertical-align: $valign;
+    font-size: 0.1px;
+
+    // Setup the horizontal Align for the inner Columns
+    @if $align == justify {
+      &:after {
+        content: '';
+        display: inline-block;
+        width: 100%;
+      }
+
+    } @else if $align == center {
+      text-align: center;
+
+    } @else if $align == right {
+      text-align: right;
+    }
+
+  } @else if $layout == table {
+    display: table;
+    width: 100%;
+
+  } @else if $layout == fixedtable {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+
+  } @else if $layout == flex {
+    display: flex;
+
+    // Add Flexbox Horizontal Align
+    @if $align == left {
+      justify-content: flex-start;
+
+    } @else if $align == center {
+      justify-content: center;
+
+    } @else if $align == right {
+      justify-content: flex-end;
+
+    } @else if $align == spacebetween {
+      justify-content: space-between;
+
+    } @else if $align == spacearound {
+      justify-content: space-around;
+    }
+
+    // Vertical Alignment
+    @if $valign == top {
+      align-items: flex-start;
+
+    } @else if $valign == middle {
+      align-items: center;
+
+    } @else if $valign == bottom {
+      align-items: flex-end;
+
+    } @else if $valign == stretch {
+      align-items: stretch;
+
+    } @else if $valign == baseline {
+      align-items: baseline;
+    }
+
+  } @else {
+    @include clearfix();
+  }
+
+  // Add the Margins
+  @if $overlap {
+    // Let the Row Overlap
+    @include overlap($overlap);
+
+    // Reset the inner Margin
+    & & {
+      margin-left: 0;
+      margin-right: 0;
+    }
+  } @else {
+    // Reset the inner Margin
+    & & {
+      margin-left: 0 - unit-check($spacing);
+      margin-right: 0 - unit-check($spacing);
+    }
+  }
+}
+
+// Build the Base Style for all Columns. Include the Mixin in your Column Class
+//
+// @param  {number} $spacing  - Column Side-Spacing
+// @param  {string} $layout   - The type from the Layout, values: ([block], inline, table, flex)
+// @param  {Map}    $o        - Setup Vars
+//         {bool}   $o.extras - For include additional classes for the columns [false]
+//         {string} $o.valign - Vertical align ([top], bottom, baseline, middle, stretch)
+//         {string} $o.align  - Horizontal align ([left], justify, center, right, left, superleft, superright)
+//         {number} $o.gutter - Vertical Gutter [false]
+@mixin column($spacing: 10, $layout: 'block', $o: ()) {
+
+  // Mixin Default Vars
+  $o: map-merge((
+    extras: false,
+    valign: top,
+    align: left,
+    gutter: false
+  ),$o);
+
+  // Variable Routing
+  $extras : map-get($o,extras);
+  $valign : map-get($o,valign);
+  $align  : map-get($o,align);
+  $gutter : map-get($o,gutter);
+
+  // Map with the possible Arguments
+  $check: (
+    layout: (block, inline, table, flex),
+    align: (left, justify, center, right, left, superleft, superright),
+    valign: (top, bottom, baseline, middle, stretch)
+  );
+
+  // Check the Possible Arguments, on fail put a warning in the Console
+  @include warn-args($check, layout, map-get($o, layout), 'column');
+  @include warn-args($check, valign, map-get($o, valign), 'column');
+  @include warn-args($check, align, map-get($o, align), 'column');
+
+  // Set the Column Spacing to establish the Column Gutter
+  @if $spacing > 0 {
+    padding-left: unit-check($spacing);
+    padding-right: unit-check($spacing);
+  }
+
+  // Include Extra Classes for the Columns
+  @if $extras != false {
+    min-height: 1px;
+
+    &#{$bem-modifier}collapse {
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    @if $layout == block {
+      &#{$bem-modifier}left { float: left !important; }
+
+      &#{$bem-modifier}right { float: right !important; }
+
+      &#{$bem-modifier}center {
+        float: none !important;
+        margin-left: auto;
+        margin-right: auto;
+      }
+    }
+  }
+
+  // Setup the Column Layout
+  @if $layout == inline {
+    // Style the Inline-Block Layout
+    display: inline-block;
+    letter-spacing: normal;
+    word-spacing: normal;
+    white-space: normal;
+    vertical-align: $valign;
+    text-align: $align;
+
+  } @else if $layout == table {
+    // Set to Table Layout
+    display: table-cell;
+    vertical-align: $valign;
+
+
+  } @else if $layout == flex {
+    // Size for Flexbox comes from span
+    flex: 0 0 auto;
+
+    // Set vertical align
+    @if $valign == top {
+      align-items: flex-start;
+
+    } @else if $valign == bottom {
+      align-items: flex-end;
+
+    } @else if $valign == baseline {
+      align-items: baseline;
+
+    } @else if $valign == middle {
+      align-items: center;
+
+    } @else if $valign == stretch {
+      align-items: stretch;
+    }
+
+  } @else {
+    // Style for the Block layout
+    display: block;
+
+    @if $gutter {
+      margin-left: $gutter;
+      margin-right: $gutter;
+    }
+
+    @if $layout == right {
+      float: right;
+
+      &:last-child {  float: left; }
+
+    } @else if $align == center {
+      margin-left: auto;
+      margin-right: auto;
+
+    } @else if $align == superleft {
+      float: left;
+
+    } @else if $align == superright {
+      float: right;
+
+    } @else {
+      float: left;
+      &:last-child { float: right; }
+    }
+  }
+}
+
+// Generate a Grid Column Size
+//
+// @param  {Number} $column   - Number of Columns [1]
+// @param  {Map}    $o        - Setup Args
+//         {number} $o.max    - Max available Columns. [12]
+//         {bool}   $o.flex   - Flexbox Option. [false]
+//         {number} $o.gutter - Calculate the Size with the Calc Formula [false]
+@mixin span($column: 1, $o: ()) {
+
+  // Mixin Default Vars
+  $o: map-merge((
+    max: 12,
+    flex: false,
+    gutter: false
+  ),$o);
+
+  // Variable Routing
+  $max  : map-get($o, max);
+  $flex : map-get($o, flex);
+  $gutter : map-get($o, gutter);
+
+  // Cleanup Max
+  $m: strip-units($max);
+
+  // Cleanup Size
+  $s: clamp(strip-units($column), 0, $m);
+
+  // Check if Flexbox is active
+  @if $flex == false {
+    @if $gutter {
+      width: span-calc($s, $gutter);
+    } @else {
+      width: span($s, $m);
+    }
+
+  } @else {
+    // Set the Flexbox width
+    @if $gutter {
+      flex-basis: span-calc($s, $gutter);
+      max-width: span-calc($s, $gutter);
+    } @else {
+      flex-basis: span($s, $m);
+      max-width: span($s, $m);
+    }
+  }
+}
+
+// Generate a Pixel Based Grid Columns
+//
+// @param  {Number} $column   - Number of Columns [1]
+// @param  {Map}    $o        - Setup Args
+//         {number} $o.max    - Max available Columns. [12]
+//         {number} $o.margin - Margin for the left and right Side [10]
+//         {number} $o.space  - Max Width in Px for the outer Container [1180]
+@mixin static-colum($column: 1, $o: ()) {
+
+  // Mixin default vars
+  $o: map-merge((
+    max: 12,
+    margin: 10,
+    space: 1180
+  ),$o);
+
+  // Variable Routing
+  $max    : map-get($o, max);
+  $margin : map-get($o, margin);
+  $space  : map-get($o, space);
+
+  // Cleanup Max
+  $m: strip-units($max);
+
+  // Cleanup Size
+  $s: clamp(strip-units($column), 0, $m);
+
+  // Cleanup Margin
+  $g: strip-units($margin) * 2;
+
+  // Calculate the Width
+  @if $s > 0 {
+    width: strip-units($s) * (strip-units($space) / $m) - $g + 0px;
+
+    // Setup Margin
+    @if $margin > 0 {
+      margin-left: strip-units($margin) + 0px;
+      margin-right: strip-units($margin) + 0px;
+    }
+
+  } @else {
+    width: strip-units($s) * (strip-units($space) / $m) + 0px;
+  }
+}
+
+// Generate Column Sizes, it can be also preselected
+//
+// @param  {number} $columns   - Number of generated columns [12]
+// @param  {map}    $o         - Setup Vars
+//         {list}   $o.select  - Include a List with the Sizes that you want. [false]
+//         {string} $o.name    - Classname when the Mixin is not nested in a class. [false]
+//         {string} $o.extend  - Connect the generated classes with a other class. [false]
+//         {bool}   $o.silent  - Generate Placeholder Classes. [false]
+//         {number} $o.gutter  - Calculate the Size with the Calc Formula [false]
+@mixin grid-generator($columns: 12, $o: ()) {
+
+  // Mixin Default Vars
+  $o: map-merge((
+    select: false,
+    name: false,
+    extend: false,
+    silent: false,
+    gutter: false
+  ),$o);
+
+  // Variable Routing
+  $select : map-get($o, select);
+  $name   : map-get($o, name);
+  $extend : map-get($o, extend);
+  $silent : map-get($o, silent);
+  $gutter : map-get($o, gutter);
+  $p      : null;
+
+  // Class Prefix (realClass or silentClass)
+  @if $silent {
+    $p: '%';
+
+    @if $name == false { $name: 'span'; }
+
+  } @else {
+    $p: '.';
+  }
+
+  @if $select == false {
+    // Generate a whole List off Colum Size Classes
+    @for $i from 1 through strip-units($columns) {
+
+      // Use outer Classes or free defined selectors
+      @if $name == false {
+        &#{$bem-modifier}#{$i} {
+          @include span($i, (
+            max: strip-units($columns),
+            gutter: $gutter
+          ));
+
+          // Connect the Classes with other Classes
+          @if $extend != false {
+            @extend #{$extend};
+          }
+        }
+
+      } @else {
+        // Generate a List with Selector Names for Control
+        @if $silent {
+          // If no name available include a empty name for the silent class
+          /* #{$p}#{$name}#{$bem-modifier}#{$i} */
+        }
+
+        #{$p}#{$name}#{$bem-modifier}#{$i} {
+          @include span($i, (
+            max: strip-units($columns),
+            gutter: $gutter
+          ));
+
+          // Connect the Classes with other Classes
+          @if $extend != false {
+            @extend #{$extend};
+          }
+        }
+      }
+    }
+
+  } @else {
+    // Generate a List with preselected column size classes
+    // Clean Up the List
+    $clean-list: sl-remove-duplicates(sl-sort($select));
+
+    // The duration of the Loop
+    $loop-length: length($clean-list);
+
+    // Connect the Classes
+    // Build a individual Loop
+    @for $i from 1 through $loop-length {
+      // Dont Generate when the Numbers are bigger than maxcolumns and lower than 1
+      @if (nth($select, $i)) <= $columns and (nth($select, $i)) >= 1 {
+
+        // Use outer Classes or free defined selectors
+        @if $name == false {
+          &#{$bem-modifier}#{nth($clean-list, $i)} {
+            @include span(nth($clean-list, $i), (
+              max: strip-units($columns),
+              gutter: $gutter
+            ));
+
+            // Connect the Classes with other Classes
+            @if $extend != false {
+              @extend #{$extend};
+            }
+          }
+
+        } @else {
+          // Generate a List with Selector Names for Controll
+          @if $silent {
+            /* #{$p}#{$name}#{$bem-modifier}#{nth($clean-list, $i)} */
+          }
+
+          #{$p}#{$name}#{$bem-modifier}#{nth($clean-list, $i)} {
+            @include span(nth($clean-list, $i), (
+              max: strip-units($columns),
+              gutter: $gutter
+            ));
+
+            // Connect the Classes with other Classes
+            @if $extend != false {
+              @extend #{$extend};
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// Generate the Offset Width for a Column
+//
+// @param  {Number} $column      - The desired Offset-Size based on the Columnsizes [1]
+// @param  {map}    $o           - Setup Vars
+//         {number} $o.max       - Max Offset Classes [12]
+//         {string} $o.direction - Direction off the Offset ([left], right)
+@mixin offset($column: 1, $o: ()) {
+
+  // Mixin default Vars
+  $o: map-merge((
+    max: 12,
+    direction: left
+  ),$o);
+
+  // Variable Routing
+  $max       : map-get($o,max);
+  $direction : map-get($o,direction);
+
+  // Map with the possible Arguments
+  $check: (
+    direction: (left, right)
+  );
+
+  // Check the Possible Arguments, on fail put a warning in the Console
+  @include warn-args($check, direction, map-get($o, direction), 'offset');
+
+  // Cleanup Max
+  $m: strip-units($max);
+
+  // Cleanup Columns
+  $c: clamp(strip-units($column), 0, $m);
+
+  @if $direction == left {
+    margin-left: span($c,$m);
+
+  } @else {
+    margin-right: span($c,$m);
+  }
+}
+
+// Generate a set of Offset Classes
+//
+// @param  {number} $columns  - Number of generated offset columns
+// @param  {map}    $o        - Setup Args
+//         {string} $o.name   - Add a classname (without dot) or use the Parent Class Name [false]
+//         {bool}   $o.silent - Make it silent
+@mixin offset-generator($columns: 12, $o: ()) {
+
+  // Mixin default Vars
+  $o: map-merge((
+    name: false,
+    silent: false
+  ),$o);
+
+  // Variable Routing
+  $name   : map-get($o,name);
+  $silent : map-get($o,silent);
+  $p      : null;
+
+  // Class Prefix (realClass or silentClass)
+  @if $silent {
+    $p: '%';
+
+    // If no name available include a empty name for the silent class
+    @if $name == false {
+      $name: 'offset';
+    }
+
+  } @else {
+    $p: '.';
+  }
+
+  // Cleanup Max
+  $m: strip-units($columns);
+
+  // Generate offset Classes
+  @for $i from 1 through ($m - 1) {
+    // When 'name' is false use the Parent Class
+    @if $name == false {
+
+      &-left#{$bem-modifier}#{$i} {
+        @include offset($i, (
+          max: $m
+        ));
+      }
+
+      &-right#{$bem-modifier}#{$i} {
+        @include offset($i, (
+          max: $m,
+          direction: right
+        ));
+      }
+
+    } @else {
+      // Generate a List with Selector Names for Control
+      @if $silent {
+        /* #{$p}#{$name}-left#{$bem-modifier}#{$i}, */
+        /* #{$p}#{$name}-right#{$bem-modifier}#{$i} */
+      }
+
+      #{$p}#{$name}-left#{$bem-modifier}#{$i} {
+        @include offset($i, (
+          max: $m
+        ));
+      }
+
+      #{$p}#{$name}-right#{$bem-modifier}#{$i} {
+        @include offset($i, (
+          max: $m,
+          direction: right
+        ));
+      }
+    }
+  }
+}
+
+// Move a Column with Position:Relative to left or right -
+// Elements can move out off the container or it change the order
+//
+// @param  {Number} $column      - Width of Push & Pull Class, based on Columnsizes [1]
+// @param  {map}    $o           - Setup args
+//         {number} $o.max       - Max Push & Pull Columns [12]
+//         {string} $o.direction - The Direct ion off the Offset ([push], pull)
+//         {bool}   $o.extend    - Connected with a other class. [false]
+@mixin pushpull($column: 1, $o: ()) {
+
+  // Mixin default vars
+  $o: map-merge((
+    max: 12,
+    direction: push,
+    extend: false
+  ),$o);
+
+  // Variable Routing
+  $max       : map-get($o,max);
+  $direction : map-get($o,direction);
+  $extend    : map-get($o,extend);
+
+  // Map with the possible Arguments
+  $check: (
+    direction: (push, pull)
+  );
+
+  // Check the Possible Arguments, on fail put a warning in the Console
+  @include warn-args($check, direction, map-get($o, direction), 'pushpull');
+
+  // Cleanup Max
+  $m: strip-units($max);
+
+  // Cleanup Columns
+  $c: clamp(strip-units($column), 0, $m);
+
+  @if $extend == false {
+    position: relative;
+
+  } @else {
+    @extend #{$extend};
+  }
+
+  @if $direction == pull {
+    right: span($c, $m);
+
+  } @else {
+    left: span($c, $m);
+  }
+}
+
+// Generate the Push&Pull Classes
+//
+// @param  {number} $columns  - Number of generated offset columns
+// @param  {map}    $o        - Setup args
+//         {string} $o.name   - Add a classname (without dot) or use the Parent Class Name [false]
+//         {bool}   $o.extend - With 'true' the class will connected with a other class. [false]
+//         {bool}   $o.silent - Connected with a other class. [false]
+@mixin pushpull-generator($columns: 12, $o: ()) {
+
+  // Mixin default Vars
+  $o: map-merge((
+    name: false,
+    extend: false,
+    silent: false
+  ),$o);
+
+  // Variable Routing
+  $name   : map-get($o, name);
+  $extend : map-get($o, extend);
+  $silent : map-get($o, silent);
+  $p      : null;
+
+  // Class Prefix (realClass or silentClass)
+  @if $silent {
+    $p: '%';
+
+    // If no name available include a empty name for the silent class
+    @if $name == false {
+      $name: 'pp';
+    }
+
+  } @else {
+    $p: '.';
+  }
+
+  // Cleanup Max
+  $m: strip-units($columns);
+
+  // Generate the Push&Pull Classes
+  @for $i from 1 through ($m - 1) {
+    // When 'name' is false use the Parent Class
+    @if $name == false {
+      &-push#{$bem-modifier}#{$i} {
+        @include pushpull($i, (
+          max: $m,
+          extend: $extend
+        ));
+      }
+
+      &-pull#{$bem-modifier}#{$i} {
+        @include pushpull($i, (
+          max: $m,
+          direction: pull,
+          extend: $extend
+        ));
+      }
+
+    } @else {
+      // Generate a List with Selector Names for Control
+      @if $silent {
+        /* #{$p}#{$name}-push#{$bem-modifier}#{$i}, */
+        /* #{$p}#{$name}-pull#{$bem-modifier}#{$i} */
+
+        // When a name is not defined the Mixin use a own name for Silent Classes
+        $name: if($name, $name, '');
+      }
+
+      #{$p}#{$name}-push#{$bem-modifier}#{$i} {
+        @include pushpull($i, (
+          max: $m,
+          extend: $extend
+        ));
+      }
+
+      #{$p}#{$name}-pull#{$bem-modifier}#{$i} {
+        @include pushpull($i,(
+          max: $m,
+          direction: pull,
+          extend: $extend
+        ));
+      }
+    }
+  }
+}
+
+// Reset Grid Objects. Works only when you not silent the Grid Classes
+//
+// @param  {map}    $o           - Setup Vars
+//         {string} $o.name      - Desired Name off the Selector that need to modified [false]
+//         {string} $o.option    - Layout Type. ([blockgrid], inlinetable, offset, pushpull)
+//         {bool}   $o.important - Add an Important to the Attribute [false]
+@mixin grid-reset($o: ()) {
+
+  // Mixin default vars
+  $o: map-merge((
+    name: false,
+    option: blockgrid,
+    important: false
+  ),$o);
+
+  // Variable Routing
+  $name      : map-get($o,name);
+  $option    : map-get($o,option);
+  $important : map-get($o,important);
+
+  // Map with the possible Arguments
+  $check: (
+    option: (blockgrid, inlinetable, offset, pushpull)
+  );
+
+  // Check the Possible Arguments, on fail put a warning in the Console
+  @include warn-args($check, option, map-get($o, option), 'grid-reset');
+
+  // Set internal default var
+  $i: null;
+
+  // Important Check
+  @if $important == true {
+    $i: !important
+  } @else {
+    $i: null
+  }
+
+  @if $name != false {
+
+    @if $option == pushpull {
+      [class^="#{$name}-push#{$bem-modifier}"],
+      [class*=" #{$name}-push#{$bem-modifier}"] {
+        left: 0 $i;
+      }
+
+      [class^="#{$name}-pull#{$bem-modifier}"],
+      [class*=" #{$name}-pull#{$bem-modifier}"] {
+        right: 0 $i;
+      }
+
+    } @else if $option == offset {
+      [class^="#{$name}-right#{$bem-modifier}"],
+      [class*=" #{$name}-right#{$bem-modifier}"] {
+        margin-right: 0 $i;
+      }
+
+      [class^="#{$name}-left#{$bem-modifier}"],
+      [class*=" #{$name}-left#{$bem-modifier}"] {
+        margin-left: 0 $i;
+      }
+
+    } @else if $option == inlinetable {
+      [class^="#{$name}"],
+      [class*="#{$name}"] {
+        display: block $i;
+        width: 100% $i;
+      }
+
+    } @else {
+      // Reset the Base Grid
+      [class^="#{$name}"],
+      [class*="#{$name}"] {
+        float: none $i;
+        width: 100% $i;
+      }
+    }
+
+  } @else {
+    @warn 'Please set the Name for the reset'
+  }
+}

@@ -1,0 +1,63 @@
+// ===================================================
+// Spacings
+// ===================================================
+
+// Multiply the Spacing Value to generate Spacings, integrate the Unit
+//
+// @param  {number} $lines - Multiplier for spacing
+// @param  {bool}   $hard  - Include an !important [false]
+// @param  {number} $size  - Connection to the Base Spacing [$kittn-global-spacing]
+//
+// @return {number}
+@function s($lines, $hard: false, $size: $kittn-global-spacing) {
+  @if is-number($lines) {
+    $u: unit-check(0);
+    @return strip-units($lines) * if(unitless($size), $size + $u, $size) if($hard,!important,null);
+  } @else {
+    @warn "Value for '$lines' is no a number.";
+  }
+}
+
+// Multiply the Spacing Value to generate Spacings
+// The Unit is variable
+//
+// @param  {number} $lines - Multiplicator for Spacing
+// @param  {bool}   $imp   - For including an !important [false]
+// @param  {*}      $u     - Unit [false]
+// @param  {number} $size  - Connection to the Base Spacing [$kittn-global-spacing]
+//
+// @return {number}
+@function gap($lines, $imp: false, $u: false, $size: $kittn-global-spacing) {
+  @if type-of($lines) == 'number' {
+
+    // When other unittype is used
+    @if $u != false {
+
+      // Setup other Units
+      @if $u == none { $u: 0; }
+      @if $u == px or $u == p { $u: 0px; }
+
+      @if $u == em or $u == e { $u: 0em; }
+
+      @if $u == rem or $u == r { $u: 0rem; }
+
+      @if $imp != false {
+        @return strip-units($lines) * $size + $u !important;
+
+      } @else {
+        @return strip-units($lines) * $size + $u;
+      }
+
+    } @else {
+      @if $imp != false {
+        @return strip-units($lines) * $size !important;
+
+      } @else {
+        @return strip-units($lines) * $size;
+      }
+    }
+
+  } @else {
+    @warn 'Please use Number for the lines.'
+  }
+}
